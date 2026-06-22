@@ -15,10 +15,19 @@
     "dist:mac": "vite build && electron-builder --mac",
     "dist:linux": "vite build && electron-builder --linux"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smartlizi/zcode-account-switcher.git"
+  },
   "build": {
     "appId": "com.zcode.account-switcher",
     "productName": "ZCode Account Switcher",
     "copyright": "MIT",
+    "publish": {
+      "provider": "github",
+      "owner": "smartlizi",
+      "repo": "zcode-account-switcher"
+    },
     "directories": {
       "output": "release",
       "buildResources": "assets"

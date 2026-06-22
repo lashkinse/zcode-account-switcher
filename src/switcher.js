@@ -12,7 +12,20 @@ const path = require('path');
 const { exec, execSync } = require('child_process');
 const { CREDENTIALS_FILE, CONFIG_FILE, findZCodeExe } = require('./paths');
 
-const BACKUP_DIR = path.join(__dirname, '..', '.last'); // 上次切换前的登录态（回滚用）
+// .last 备份目录（打包后需写到可读写的用户目录）
+function resolveBackupDir() {
+  if (process.env.ZCAS_DATA_DIR) {
+    return path.join(process.env.ZCAS_DATA_DIR, '.last');
+  }
+  try {
+    const { app } = require('electron');
+    if (app && app.isPackaged) {
+      return path.join(app.getPath('userData'), '.last');
+    }
+  } catch (_) {}
+  return path.join(__dirname, '..', '.last');
+}
+const BACKUP_DIR = resolveBackupDir();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

@@ -34,8 +34,28 @@ const ZCODE_EXE_CANDIDATES = [
   'D:\\Program Files\\ZCode\\ZCode.exe',
 ];
 
-// 账号快照存储目录（放在本工具目录下，避免污染 v2）
-const STORE_DIR = path.join(__dirname, '..', 'accounts');
+// 账号快照存储目录
+// 打包后 __dirname 在只读的 asar 包内，账号数据必须存到可写的用户目录。
+// 优先使用环境变量 ZCAS_DATA_DIR（测试/CI 用），否则：
+//   - 打包模式（app.isPackaged=true）→ userData/accounts（%APPDATA%/ZCode Account Switcher/accounts）
+//   - 开发/CLI 模式 → 项目根目录 accounts/（保持原有行为）
+function resolveStoreDir() {
+  if (process.env.ZCAS_DATA_DIR) {
+    return path.join(process.env.ZCAS_DATA_DIR, 'accounts');
+  }
+  // 在 Electron 打包进程中才能访问 app.getPath
+  try {
+    const { app } = require('electron');
+    if (app && app.isPackaged) {
+      return path.join(app.getPath('userData'), 'accounts');
+    }
+  } catch (_) {
+    // 非 Electron 环境（CLI），忽略
+  }
+  // 开发或 CLI 模式：项目根目录 accounts/
+  return path.join(__dirname, '..', 'accounts');
+}
+const STORE_DIR = resolveStoreDir();
 
 /**
  * 找到 ZCode.exe 的实际路径

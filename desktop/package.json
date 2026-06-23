@@ -1,7 +1,7 @@
 {
   "name": "zcode-account-switcher-desktop",
   "version": "1.0.0",
-  "description": "ZCode 账号无感切换器 - 桌面版",
+  "description": "ZCode Account Switcher - Desktop",
   "main": "main.js",
   "type": "commonjs",
   "scripts": {

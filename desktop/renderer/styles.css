@@ -107,7 +107,7 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* ===== 涓诲竷灞€ ===== */
+/* ===== MAIN LAYOUT ===== */
 .app {
   display: flex;
   flex-direction: column;
@@ -115,7 +115,7 @@ button:disabled {
   background: var(--color-background);
 }
 
-/* 椤舵爮 */
+/* TOPBAR */
 .topbar {
   display: flex;
   align-items: center;
@@ -298,7 +298,7 @@ button:disabled {
 
 .identity-card {
   display: flex;
-  flex-direction: column;   /* 纵向铺满，对齐中卡（总额度概览）结构 */
+  flex-direction: column;   /* vertical fill, aligned with mid-card (total quota overview) layout */
   gap: 12px;
 }
 
@@ -544,7 +544,7 @@ button:disabled {
 .account-list {
   flex: 1;
   overflow-y: auto;
-  overflow-x: auto;  /* 宽度不足时横向滚动，而非压缩卡片变形 */
+  overflow-x: auto;  /* horizontal scroll when width is insufficient, instead of squishing cards */
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
@@ -565,8 +565,8 @@ button:disabled {
 /* Account card */
 .account-card {
   position: relative;
-  flex: 0 0 auto;       /* 不被列表压缩，宽度由内容决定 */
-  min-width: 920px;     /* 固定最小宽度，防止窗口变窄时压缩变形 */
+  flex: 0 0 auto;       /* not compressed by list; width determined by content */
+  min-width: 920px;     /* fixed minimum width to prevent squishing when window narrows */
   background: linear-gradient(180deg, rgba(28, 31, 40, 0.82), rgba(18, 20, 27, 0.68));
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -609,7 +609,7 @@ button:disabled {
   object-fit: cover;
 }
 
-/* 当前使用中账号：克制的高质感选中态（实色绿边 + 柔和绿色外发光，无粗暴色块）*/
+/* Active account: subtle premium selected state (solid green border + soft green glow, no harsh color blocks) */
 .account-card.current {
   border-color: rgba(34, 197, 94, 0.7);
   box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.28), 0 0 26px rgba(34, 197, 94, 0.18), var(--inset-highlight);
@@ -790,13 +790,13 @@ button:disabled {
   background: linear-gradient(180deg, rgba(14, 16, 21, 0.6), rgba(18, 20, 27, 0.5));
   border: 1px solid rgba(71, 85, 105, 0.4);
   box-shadow: var(--inset-highlight);
-  /* 整个额度块压成单行：标题 | 刷新 | 模型们 | 时间 */
+  /* Compress entire quota block into single line: title | refresh | models | time */
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-/* 单行内的各子元素垂直居中，不换行 */
+/* Vertically center child elements within single line, no wrapping */
 .account-quota-block > * {
   flex-shrink: 0;
 }
@@ -810,13 +810,13 @@ button:disabled {
   white-space: nowrap;
 }
 
-/* 模型们容器：横向排列，占满中间剩余空间 */
+/* Models container: horizontal layout, fills remaining middle space */
 .account-quota-block .quota-items {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-/* 刷新时间：行尾，弱化，空间不足时可收缩省略，绝不挤压进度条 */
+/* Refresh time: end of line, muted, can shrink/ellipsis when space is tight, never squeezes progress bar */
 .account-quota-time {
   font-size: 10px;
   color: var(--color-foreground-faint);
@@ -851,7 +851,7 @@ button:disabled {
   color: var(--color-warning);
 }
 
-/* 新账号提示（蓝色信息色，区分于灰/橙，引导用户操作）*/
+/* New account hint (blue info color, distinct from gray/orange, guides user action) */
 .account-quota-state.hint {
   color: var(--color-info);
 }
@@ -997,7 +997,7 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-/* 搴曟爮 */
+/* STATUS BAR */
 .footer {
   display: flex;
   align-items: center;
@@ -1420,7 +1420,7 @@ button:disabled {
   color: var(--color-foreground);
 }
 
-/* 缁撴灉璁℃暟 */
+/* RESULT COUNT */
 .results-count {
   font-size: 12px;
   color: var(--color-foreground-dim);
@@ -1586,7 +1586,7 @@ button:disabled {
   font-size: 12px;
 }
 
-/* 宸茬櫥褰曠洅 */
+/* LOGGED IN VAULT */
 .logged-in-box {
   display: flex;
   flex-direction: column;

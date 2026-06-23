@@ -1,13 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import zhCN from './locales/zh-CN.json';
 import en from './locales/en.json';
-import ru from './locales/ru.json';
 
 const STORAGE_KEY = 'zcas.locale';
 const dictionaries = {
-  'zh-CN': zhCN,
   en,
-  ru,
+  'zh-CN': zhCN,
 };
 
 const LocaleContext = createContext(null);
@@ -15,7 +13,6 @@ const LocaleContext = createContext(null);
 function normalizeLocale(input) {
   const value = String(input || '').toLowerCase();
   if (value.startsWith('zh')) return 'zh-CN';
-  if (value.startsWith('ru')) return 'ru';
   return 'en';
 }
 
@@ -39,7 +36,7 @@ export function getInitialLocale() {
   if (typeof navigator !== 'undefined' && navigator.language) {
     return normalizeLocale(navigator.language);
   }
-  return 'zh-CN';
+  return 'en';
 }
 
 export function LocaleProvider({ children }) {

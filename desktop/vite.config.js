@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Vite 只负责构建渲染进程（renderer）的 React 前端
-// 主进程（main.js / preload.js）是纯 Node，不经过 Vite
+// Vite only builds the renderer (React frontend)
+// The main process (main.js / preload.js) is pure Node and does not go through Vite
 export default defineConfig({
   plugins: [react()],
   root: '.',

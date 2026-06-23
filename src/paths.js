@@ -1,11 +1,11 @@
 'use strict';
 /**
- * 路径常量
+ * Path constants
  *
- * ZCode 客户端的登录态文件（Windows）：
- *   %USERPROFILE%\.zcode\v2\credentials.json   -> 加密的 OAuth token（enc:v1:...）
- *   %USERPROFILE%\.zcode\v2\config.json        -> 每个 provider 的 apiKey JWT（明文，含 user_id）
- *   %APPDATA%\ZCode\ZCode.exe                  -> ZCode 客户端
+ * ZCode client login state files (Windows):
+ *   %USERPROFILE%\.zcode\v2\credentials.json   -> encrypted OAuth token (enc:v1:...)
+ *   %USERPROFILE%\.zcode\v2\config.json        -> each provider's apiKey JWT (plaintext, contains user_id)
+ *   %APPDATA%\ZCode\ZCode.exe                  -> ZCode client
  */
 const os = require('os');
 const path = require('path');
@@ -14,15 +14,15 @@ const fs = require('fs');
 const HOME = os.homedir();
 const APPDATA = process.env.APPDATA || path.join(HOME, 'AppData', 'Roaming');
 
-// ZCode 数据目录
+// ZCode data directory
 const ZCODE_V2_DIR = path.join(HOME, '.zcode', 'v2');
 
-// 登录态文件（这两份构成一份完整账号快照）
+// Login state files (these two form a complete account snapshot)
 const CREDENTIALS_FILE = path.join(ZCODE_V2_DIR, 'credentials.json');
 const CONFIG_FILE = path.join(ZCODE_V2_DIR, 'config.json');
 
-// ZCode 客户端安装目录候选（按优先级排列，首个存在的将被采用）
-// 当前机器实测：C:\Program Files\ZCode\ZCode.exe
+// ZCode client installation directory candidates (in priority order, the first existing one will be used)
+// Tested on current machine: C:\Program Files\ZCode\ZCode.exe
 const PROGRAM_FILES = process.env.ProgramFiles || 'C:\\Program Files';
 const PROGRAM_FILES_X86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 const LOCAL_APPDATA = process.env.LOCALAPPDATA || path.join(HOME, 'AppData', 'Local');
@@ -34,31 +34,31 @@ const ZCODE_EXE_CANDIDATES = [
   'D:\\Program Files\\ZCode\\ZCode.exe',
 ];
 
-// 账号快照存储目录
-// 打包后 __dirname 在只读的 asar 包内，账号数据必须存到可写的用户目录。
-// 优先使用环境变量 ZCAS_DATA_DIR（测试/CI 用），否则：
-//   - 打包模式（app.isPackaged=true）→ userData/accounts（%APPDATA%/ZCode Account Switcher/accounts）
-//   - 开发/CLI 模式 → 项目根目录 accounts/（保持原有行为）
+// Account snapshot storage directory
+// After packaging, __dirname is inside the read-only asar package, account data must be stored in a writable user directory.
+// Prioritize environment variable ZCAS_DATA_DIR (for testing/CI), otherwise:
+//   - Packaged mode (app.isPackaged=true) → userData/accounts (%APPDATA%/ZCode Account Switcher/accounts)
+//   - Dev/CLI mode → project root accounts/ (preserves original behavior)
 function resolveStoreDir() {
   if (process.env.ZCAS_DATA_DIR) {
     return path.join(process.env.ZCAS_DATA_DIR, 'accounts');
   }
-  // 在 Electron 打包进程中才能访问 app.getPath
+  // Can only access app.getPath in Electron packaged process
   try {
     const { app } = require('electron');
     if (app && app.isPackaged) {
       return path.join(app.getPath('userData'), 'accounts');
     }
   } catch (_) {
-    // 非 Electron 环境（CLI），忽略
+    // Non-Electron environment (CLI), ignore
   }
-  // 开发或 CLI 模式：项目根目录 accounts/
+  // Dev or CLI mode: project root accounts/
   return path.join(__dirname, '..', 'accounts');
 }
 const STORE_DIR = resolveStoreDir();
 
 /**
- * 找到 ZCode.exe 的实际路径
+ * Find the actual path of ZCode.exe
  */
 function findZCodeExe() {
   for (const p of ZCODE_EXE_CANDIDATES) {

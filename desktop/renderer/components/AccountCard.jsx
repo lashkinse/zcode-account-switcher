@@ -13,7 +13,7 @@ function fmtDate(ts, locale) {
 }
 
 function fmtNumber(value, locale) {
-  if (value == null) return locale === 'zh-CN' ? '未知' : 'Unknown';
+  if (value == null) return 'Unknown';
   return new Intl.NumberFormat(locale === 'zh-CN' ? 'zh-CN' : 'en', { maximumFractionDigits: 0 }).format(value);
 }
 

@@ -1,8 +1,8 @@
 'use strict';
 /**
- * ZCode 额度查询
+ * ZCode quota query
  *
- * 读取当前 credentials/config 中的 token，调用 ZCode billing API，返回总额/已用/剩余概览。
+ * Read tokens from current credentials/config, call ZCode billing API, return total/used/remaining overview.
  */
 const fs = require('fs');
 const { CREDENTIALS_FILE, CONFIG_FILE } = require('./paths');
@@ -11,9 +11,9 @@ const { decrypt, isEncrypted } = require('./zcodeCrypto');
 const BILLING_CURRENT_URL = 'https://zcode.z.ai/api/v1/zcode-plan/billing/current';
 const BILLING_BALANCE_URL = 'https://zcode.z.ai/api/v1/zcode-plan/billing/balance';
 
-// ZCode 客户端请求 billing/current 时带 app_version + platform 参数，
-// 服务端根据这些参数路由到正确的 billing plan 版本；
-// 缺少参数时服务端可能返回空 plans（新账号场景下尤为明显）。
+// ZCode client sends app_version + platform parameters when requesting billing/current,
+// the server routes to the correct billing plan version based on these parameters;
+// when parameters are missing, the server may return empty plans (especially noticeable for new accounts).
 const CLIENT_APP_VERSION = '4.1.10';
 const CLIENT_PLATFORM = 'win32-x64';
 
@@ -26,7 +26,7 @@ function buildBillingUrl(baseUrl) {
 
 async function getQuotaOverview() {
   const tokens = readCandidateTokens();
-  if (tokens.length === 0) throw new Error('未找到可用于查询额度的 ZCode token，请先登录或切换账号');
+  if (tokens.length === 0) throw new Error('No ZCode token found for quota query. Please sign in or switch accounts first.');
   return queryQuotaByTokens(tokens);
 }
 
@@ -39,7 +39,7 @@ async function queryQuotaByTokens(tokens) {
   for (const token of tokens) {
     try {
       const current = await fetchBilling(buildBillingUrl(BILLING_CURRENT_URL), token);
-      const balance = await fetchBilling(BILLING_BALANCE_URL, token);
+      const balance = await fetchBilling(buildBillingUrl(BILLING_BALANCE_URL), token);
       const overview = normalizeQuota(current.data, balance.data);
 
       return {
@@ -49,17 +49,17 @@ async function queryQuotaByTokens(tokens) {
       };
     } catch (e) {
       lastError = e;
-      // 401/403 说明该 token 不适用，继续试下一个候选 token（不再 break）
+      // 401/403 indicates this token is not applicable, try the next candidate token (no break)
     }
   }
-  throw lastError || new Error('额度查询失败');
+  throw lastError || new Error('Quota query failed');
 }
 
 function getAccountQuota(id) {
   const manager = require('./manager');
   const snapshot = manager.load(id);
   const tokens = readCandidateTokensFromSnapshot(snapshot);
-  if (tokens.length === 0) throw new Error('该账号快照里未找到可用于查询额度的 token');
+  if (tokens.length === 0) throw new Error('No quota token found in this account snapshot');
   return queryQuotaByTokens(tokens);
 }
 
@@ -76,7 +76,7 @@ async function fetchBilling(url, token) {
   try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
   if (!response.ok) {
     const msg = typeof data === 'object' && data ? (data.message || data.msg || data.error) : text;
-    throw new Error(`额度接口 HTTP ${response.status}: ${msg || response.statusText}`);
+    throw new Error(`Quota API HTTP ${response.status}: ${msg || response.statusText}`);
   }
   return { status: response.status, data };
 }
@@ -109,8 +109,8 @@ function readCandidateTokensFromObjects(credentials, config) {
     if (plain && looksLikeToken(plain) && !tokens.includes(plain)) tokens.push(plain);
   };
 
-  // 顺序很重要：zcodejwttoken(data.token) 才是调 zcode.z.ai/billing 的正确 token，
-  // 必须排最前；oauth:*:access_token 是 chat.z.ai 的 OAuth token，查 zcode billing 会 401。
+  // Order matters: zcodejwttoken(data.token) is the correct token for calling zcode.z.ai/billing,
+  // must be first; oauth:*:access_token is chat.z.ai's OAuth token, querying zcode billing with it returns 401.
   add(credentials && credentials.zcodejwttoken);
   add(credentials && credentials['oauth:zai:access_token']);
   add(credentials && credentials['oauth:bigmodel:access_token']);
@@ -135,15 +135,15 @@ function looksLikeToken(value) {
 }
 
 /**
- * 从 billing/current 的 plans 数组提取账号付费等级（复刻 ZCode 客户端逻辑）。
- * 逆向依据：ZCode app.asar out/host/index.js 的 rz()/XN()/summarizeStartPlans()。
+ * Extract account plan tier from billing/current plans array (replicating ZCode client logic).
+ * Reverse-engineering basis: ZCode app.asar out/host/index.js rz()/XN()/summarizeStartPlans().
  *
- * 判定规则（按优先级，Max 优先于 Pro 避免模糊匹配）：
- *   - 有 status=active 且 plan_id/name 含 max   → "Max"
- *   - 有 status=active 且 plan_id/name 含 pro   → "Pro"
- *   - 有 status=active 且 plan_id/name 含 lite  → "Lite"
- *   - 有 status=active 且 plan_id/name 含 start → "Start Plan"
- *   - 否则返回 null（免费/编码套餐，无付费等级）
+ * Matching rules (by priority, Max takes precedence over Pro to avoid ambiguity):
+ *   - Has status=active and plan_id/name contains max   → "Max"
+ *   - Has status=active and plan_id/name contains pro   → "Pro"
+ *   - Has status=active and plan_id/name contains lite  → "Lite"
+ *   - Has status=active and plan_id/name contains start → "Start Plan"
+ *   - Otherwise returns null (free/coding plan, no paid tier)
  */
 function extractPlanTier(currentData) {
   const cur = unwrap(currentData);
@@ -181,7 +181,7 @@ function normalizeQuota(currentData, balanceData) {
 
   const percentUsed = total && used != null ? clamp((used / total) * 100, 0, 100) : null;
 
-  // 计费数据是否为空（plans 和 balances 都是空数组 → 账号本身无套餐数据）
+  // Whether billing data is empty (both plans and balances are empty arrays → account has no plan data)
   const isEmpty = Array.isArray(current.plans) && current.plans.length === 0
     && Array.isArray(balance.balances) && balance.balances.length === 0;
 
@@ -197,7 +197,7 @@ function normalizeQuota(currentData, balanceData) {
       total: formatQuota(total),
       used: formatQuota(used),
       remaining: formatQuota(remaining),
-      percentUsed: percentUsed == null ? '未知' : percentUsed.toFixed(1) + '%',
+      percentUsed: percentUsed == null ? 'unknown' : percentUsed.toFixed(1) + '%',
     },
   };
 }
@@ -252,7 +252,7 @@ function normalizeQuotaItems(balance) {
     const used = toNumber(item.used_units);
     const remaining = toNumber(item.remaining_units) ?? toNumber(item.available_units);
     return {
-      name: item.show_name || item.name || item.entitlement_id || item.plan_id || '未知模型',
+      name: item.show_name || item.name || item.entitlement_id || item.plan_id || 'unknown model',
       total,
       used,
       remaining,
@@ -273,8 +273,8 @@ function toNumber(value) {
 }
 
 function formatQuota(value) {
-  if (value == null) return '未知';
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value);
+  if (value == null) return 'unknown';
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
 }
 
 function clamp(value, min, max) {

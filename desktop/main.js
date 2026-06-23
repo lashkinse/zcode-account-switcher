@@ -1,20 +1,20 @@
 'use strict';
 /**
- * Electron 主进程
+ * Electron main process
  *
- * 职责：
- *   1. 创建应用窗口
- *   2. 通过 IPC 桥接渲染进程 ↔ 已验证的后端模块（manager / switcher）
+ * Responsibilities:
+ *   1. Create the application window
+ *   2. Bridge the renderer process ↔ verified backend modules (manager / switcher) via IPC
  *
- * 安全：contextIsolation=true + preload 受限 API，渲染进程不直接接触 Node。
+ * Security: contextIsolation=true + limited preload API; the renderer process does not directly access Node.
  *
- * 注意：若启动无窗口，请检查环境变量 ELECTRON_RUN_AS_NODE 是否被设为 1
- *      （会让 electron 退化成纯 node）。启动脚本已自动清除它。
+ * Note: If the app starts without a window, check whether the environment variable ELECTRON_RUN_AS_NODE is set to 1
+ *      (this would cause electron to degrade to plain node). The startup script automatically clears it.
  */
 const fs = require('fs');
 const path = require('path');
 
-// ===== 全局错误捕获 → 写日志（便于排查启动崩溃）=====
+// ===== Global error capture → write to log (for diagnosing startup crashes) =====
 const LOG_FILE = path.join(__dirname, 'main.log');
 function logErr(stage, e) {
   const line = `[${new Date().toISOString()}] ${stage}: ${e && e.stack ? e.stack : e}\n`;
@@ -25,24 +25,24 @@ process.on('unhandledRejection', (e) => logErr('unhandledRejection', e));
 
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 
-// 路径适配：开发时 src 在上级目录 ../src，打包后 electron-builder
-// 把 src/ 以 extraResources 形式放到 process.resourcesPath/app-src/
+// Path adaptation: in development src is in the parent directory ../src; after packaging electron-builder
+// places src/ as extraResources under process.resourcesPath/app-src/
 const isPacked = app.isPackaged;
 const SRC_DIR = isPacked
   ? path.join(process.resourcesPath, 'app-src')
   : path.join(__dirname, '..', 'src');
 
-// 复用 src/ 里已验证的后端逻辑（开发/打包双模式兼容）
+// Reuse verified backend logic from src/ (compatible with both dev and packaged modes)
 const manager = require(path.join(SRC_DIR, 'manager'));
 const switcher = require(path.join(SRC_DIR, 'switcher'));
 const oauth = require(path.join(SRC_DIR, 'oauth'));
 const quota = require(path.join(SRC_DIR, 'quota'));
 const { ZaiAuthFlow } = require(path.join(SRC_DIR, 'oauthCli'));
 
-const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL; // 开发模式由 vite 提供
+const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL; // Provided by vite in dev mode
 let mainWindow = null;
 
-// 通用日志（信息级，写 main.log）
+// General logging (info level, writes to main.log)
 function logInfo(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   try { fs.appendFileSync(LOG_FILE, line, 'utf8'); } catch (_) {}
@@ -65,7 +65,7 @@ function safeFileName(name) {
 function exportDefaultName(accounts) {
   const first = accounts && accounts[0] && accounts[0].meta ? accounts[0].meta : null;
   const base = safeFileName(first?.email || first?.label || first?.id);
-  const suffix = accounts.length > 1 ? `-等${accounts.length}个账号` : '';
+  const suffix = accounts.length > 1 ? `-and ${accounts.length} more` : '';
   return `${base}${suffix}.zcas.json`;
 }
 
@@ -75,7 +75,7 @@ function createWindow() {
     height: 840,
     minWidth: 1080,
     minHeight: 680,
-    title: 'ZCode 账号切换器',
+    title: 'ZCode Account Switcher',
     backgroundColor: '#0b1220',
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'assets', 'icon.png'),
@@ -83,7 +83,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false, // preload 需要 require 路径相关能力，关闭 sandbox
+      sandbox: false, // Preload requires path-related capabilities; sandbox must be off
     },
   });
 
@@ -94,7 +94,7 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'dist-renderer', 'index.html'));
   }
 
-  // 捕获渲染进程的 console 与错误，便于排查白屏/JS 报错
+  // Capture renderer process console output and errors for diagnosing white screens / JS errors
   mainWindow.webContents.on('console-message', (_e, level, message) => {
     const tag = ['LOG', 'WARN', 'ERROR'][level] || 'LOG';
     logInfo(`[renderer:${tag}] ${message}`);
@@ -109,14 +109,14 @@ function createWindow() {
     logInfo('[did-finish-load] renderer loaded');
   });
 
-  // 外部链接用系统浏览器打开
+  // Open external links in the system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
 }
 
-// ===== IPC 处理器（全部 try/catch，返回 {ok, data?, error?} 统一结构）=====
+// ===== IPC handlers (all wrapped in try/catch, returning unified {ok, data?, error?} structure) =====
 
 const wrap = async (fn, channel) => {
   try {
@@ -128,8 +128,8 @@ const wrap = async (fn, channel) => {
   }
 };
 
-// 把 OAuth 安装/操作进度推给渲染进程（用于 AddAccountModal 实时显示）
-// 把添加账号的流程事件推给渲染进程
+// Push OAuth installation/operation progress to the renderer process (for AddAccountModal real-time display)
+// Push the add-account flow events to the renderer process
 function sendFlowEvent(event) {
   logInfo('[oauth-flow] ' + event.type + (event.message ? ': ' + event.message : ''));
   try {
@@ -169,12 +169,12 @@ ipcMain.handle('account:rename', async (_evt, id, label) =>
 ipcMain.handle('account:export', async (_evt, ids) =>
   wrap(async () => {
     const payload = manager.exportAccounts(ids);
-    if (!payload.accounts.length) throw new Error('没有可导出的账号');
+    if (!payload.accounts.length) throw new Error('No accounts to export');
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: '导出账号快照',
+      title: 'Export Account Snapshots',
       defaultPath: exportDefaultName(payload.accounts),
       filters: [
-        { name: 'JSON 文件', extensions: ['json'] },
+        { name: 'JSON Files', extensions: ['json'] },
       ],
     });
     if (result.canceled || !result.filePath) return { canceled: true };
@@ -186,10 +186,10 @@ ipcMain.handle('account:export', async (_evt, ids) =>
 ipcMain.handle('account:import', async () =>
   wrap(async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: '导入账号快照',
+      title: 'Import Account Snapshots',
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'JSON 文件', extensions: ['json'] },
+        { name: 'JSON Files', extensions: ['json'] },
       ],
     });
     if (result.canceled || !result.filePaths || result.filePaths.length === 0) return { canceled: true };
@@ -223,13 +223,12 @@ ipcMain.handle('account:import', async () =>
     };
   }, 'import')
 );
+// ===== OAuth Add Account (CLI OAuth + system browser) =====
+// Flow: init to get authorize URL → openExternal to open system browser → background poll for login
+//   → detect ready → finishLogin writes to disk + snapshot.
+// The frontend calls oauth-start once, receiving stage progress via oauth:flow-event events throughout.
 
-// ===== OAuth 添加账号（CLI OAuth + 系统浏览器）=====
-// 流程：init 拿授权链接 → openExternal 打开系统浏览器 → 后台 poll 轮询登录
-//   → 检测到 ready → finishLogin 写盘 + 快照。
-// 前端调一次 oauth-start，全程通过 oauth:flow-event 事件接收阶段进度。
-
-// 进行中的登录流程 + 轮询定时器（模块级，跨请求保留）
+// Active login flow + polling timer (module-level, preserved across requests)
 let _loginFlow = null;   // { flow: ZaiAuthFlow, flowId: string }
 let _pollTimer = null;   // setInterval handle
 
@@ -243,17 +242,17 @@ function stopOauthPolling() {
 ipcMain.handle('account:oauth-start', async (_evt, opts) => {
   const { label, note } = opts || {};
   try {
-    // 1. 发起 OAuth 流程，拿授权链接
+    // 1. Initiate the OAuth flow and get the authorize URL
     const flow = new ZaiAuthFlow();
     const { flowId, authorizeUrl } = await flow.init();
     _loginFlow = { flow, flowId };
 
-    // 2. 打开系统浏览器（用户在自带浏览器里登录，风控更友好）
-    sendFlowEvent({ type: 'browser-open', message: '正在打开系统浏览器，请在浏览器中登录 Z.ai 账号' });
+    // 2. Open system browser (user logs in via their own browser, more friendly to risk control)
+    sendFlowEvent({ type: 'browser-open', message: 'Opening system browser, please log in to your Z.ai account' });
     await shell.openExternal(authorizeUrl);
-    sendFlowEvent({ type: 'waiting-login', message: '请在浏览器窗口中登录（支持账号密码 / 手机号）' });
+    sendFlowEvent({ type: 'waiting-login', message: 'Please log in via the browser window (supports email/password or phone number)' });
 
-    // 3. 后台轮询登录完成（每 2s，与参考项目一致）
+    // 3. Background polling for login completion (every 2s, consistent with reference project)
     stopOauthPolling();
     _pollTimer = setInterval(async () => {
       const current = _loginFlow;
@@ -264,7 +263,7 @@ ipcMain.handle('account:oauth-start', async (_evt, opts) => {
         if (data.status === 'failed') {
           stopOauthPolling();
           _loginFlow = null;
-          sendFlowEvent({ type: 'error', message: '登录失败或已取消' });
+          sendFlowEvent({ type: 'error', message: 'Login failed or was cancelled' });
           return;
         }
 
@@ -272,9 +271,9 @@ ipcMain.handle('account:oauth-start', async (_evt, opts) => {
           stopOauthPolling();
           _loginFlow = null;
 
-          // 构造 oauth.finishLogin() 所需的 tokenSet 结构：
+          // Build the tokenSet structure required by oauth.finishLogin():
           //   { token, zaiAccessToken, refreshToken, user }
-          // CLI OAuth 的 poll 返回正好对齐，写盘逻辑可原样复用。
+          // CLI OAuth poll returns align perfectly; disk-write logic can be reused as-is.
           const tokenSet = {
             token: data.token,
             zaiAccessToken: (data.zai && data.zai.access_token) || undefined,
@@ -283,7 +282,7 @@ ipcMain.handle('account:oauth-start', async (_evt, opts) => {
           };
 
           try {
-            sendFlowEvent({ type: 'exchanging', message: '登录成功，正在保存账号并初始化额度…' });
+            sendFlowEvent({ type: 'exchanging', message: 'Login successful, saving account and initializing quota...' });
             const result = await oauth.finishLogin({ tokenSet, label, note: note || '', overwrite: true });
             logInfo('[oauth-start] finishLogin done, billingReady=' + result.billingReady);
             sendFlowEvent({
@@ -294,12 +293,12 @@ ipcMain.handle('account:oauth-start', async (_evt, opts) => {
               billingReady: result.billingReady,
             });
           } catch (e) {
-            sendFlowEvent({ type: 'error', message: '保存账号失败：' + (e.message || e) });
+            sendFlowEvent({ type: 'error', message: 'Failed to save account: ' + (e.message || e) });
           }
         }
-        // 其它状态（pending）继续轮询
+        // Other statuses (pending) continue polling
       } catch (e) {
-        // 单次轮询网络抖动不打断流程，下次重试
+        // Single poll network jitter does not break the flow; retry on next tick
         logInfo('[oauth-start] poll error: ' + (e && e.message));
       }
     }, 2000);
@@ -307,12 +306,12 @@ ipcMain.handle('account:oauth-start', async (_evt, opts) => {
     return { ok: true, authorizeUrl };
   } catch (e) {
     logInfo('[oauth-start] error: ' + (e && e.message));
-    sendFlowEvent({ type: 'error', message: '启动登录失败：' + (e.message || e) });
+    sendFlowEvent({ type: 'error', message: 'Failed to start login: ' + (e.message || e) });
     return { ok: false, error: e.message || String(e) };
   }
 });
 
-// 取消登录流程（停轮询；系统浏览器由用户自行关闭）
+// Cancel login flow (stop polling; system browser is closed by user)
 ipcMain.handle('account:oauth-cancel', async () =>
   wrap(() => {
     stopOauthPolling();
@@ -352,7 +351,7 @@ ipcMain.handle('account:rollback', async () =>
   wrap(() => switcher.rollback({ restart: true, force: true }), 'rollback')
 );
 
-// ===== 生命周期 =====
+// ===== Lifecycle =====
 app.whenReady().then(() => {
   logInfo(`main start (electron ${process.versions.electron}, chrome ${process.versions.chrome})`);
   logInfo('backend modules loaded: manager, switcher');
@@ -360,7 +359,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // 退出前停止 OAuth 轮询（系统浏览器由用户自行关闭）
+  // Stop OAuth polling before exit (system browser is closed by user)
   stopOauthPolling();
   if (process.platform !== 'darwin') app.quit();
 });

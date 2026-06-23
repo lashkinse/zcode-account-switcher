@@ -1,7 +1,7 @@
 {
   "name": "zcode-account-switcher",
   "version": "1.0.0",
-  "description": "ZCode 账号无感切换工具 —— 备份/恢复登录态快照，免去重复 OAuth+验证码登录",
+  "description": "ZCode Account Switcher - backup/restore login snapshots, skip repeated OAuth+verification login",
   "type": "commonjs",
   "main": "src/cli.js",
   "bin": {

@@ -1,11 +1,11 @@
 'use strict';
 /**
- * 账号快照管理：list / capture / delete / rename / load
+ * Account snapshot management: list / capture / delete / rename / load
  *
- * 存储结构：
+ * Storage structure:
  *   accounts/
  *     <shortId>.meta.json   -> { id, shortId, provider, label, note, capturedAt, filename }
- *     <shortId>.snap.json    -> { credentials, config }  (完整登录态)
+ *     <shortId>.snap.json    -> { credentials, config }  (complete login state)
  */
 const fs = require('fs');
 const path = require('path');
@@ -22,7 +22,7 @@ function metaPath(id) { return path.join(STORE_DIR, id + '.meta.json'); }
 function snapPath(id) { return path.join(STORE_DIR, id + '.snap.json'); }
 
 /**
- * 列出所有已保存账号
+ * List all saved accounts
  * @returns {Array<{id, shortId, provider, label, note, capturedAt, sizeKb}>}
  */
 function list() {
@@ -35,9 +35,9 @@ function list() {
       let sizeKb = 0;
       let health = {
         status: 'error',
-        summary: '账号快照缺失或不可读',
+        summary: 'Account snapshot missing or unreadable',
         warnings: [],
-        errors: ['账号快照缺失或不可读'],
+        errors: ['Account snapshot missing or unreadable'],
         details: {},
       };
       try {
@@ -54,7 +54,7 @@ function list() {
 }
 
 /**
- * 从当前登录态捕获一个新账号快照
+ * Capture a new account snapshot from current login state
  * @param {{label?:string, note?:string, overwrite?:boolean}} opts
  * @returns {{id, meta, created:boolean}}
  */
@@ -63,16 +63,16 @@ function capture(opts = {}) {
   ensureStore();
 
   const fp = extractFingerprint();
-  if (!fp) throw new Error('无法从当前登录态提取账号指纹（请先在 ZCode 里登录任意账号）');
+  if (!fp) throw new Error('Cannot extract account fingerprint from current login state (sign in to any account in ZCode first)');
 
-  // 邮箱去重：id 优先用 emailShortId（同一邮箱覆盖更新），无邮箱回退 shortId
+  // Email deduplication: id prioritizes emailShortId (same email overwrites), falls back to shortId without email
   const id = fp.emailShortId || fp.shortId;
   const exists = fs.existsSync(metaPath(id));
 
   if (exists && !overwrite) {
-    // 已存在则跳过（同一邮箱视为同一账号）
+    // Skip if already exists (same email considered same account)
     const oldMeta = JSON.parse(fs.readFileSync(metaPath(id), 'utf8'));
-    return { id, meta: oldMeta, created: false, skipped: true, message: '该账号已存在（' + oldMeta.label + '）' };
+    return { id, meta: oldMeta, created: false, skipped: true, message: 'Account already exists (' + oldMeta.label + ')' };
   }
 
   const snap = readSnapshot();
@@ -99,21 +99,21 @@ function capture(opts = {}) {
   return { id, meta, created: true };
 }
 
-/** 读取一份账号快照（不切换） */
+/** Read an account snapshot (without switching) */
 function load(id) {
   const p = snapPath(id);
-  if (!fs.existsSync(p)) throw new Error('找不到账号快照: ' + id);
+  if (!fs.existsSync(p)) throw new Error('Account snapshot not found: ' + id);
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
-/** 切换到指定账号 */
+/** Switch to specified account */
 async function use(id, opts = {}) {
-  if (!fs.existsSync(snapPath(id))) throw new Error('找不到账号快照: ' + id);
+  if (!fs.existsSync(snapPath(id))) throw new Error('Account snapshot not found: ' + id);
   const snap = load(id);
   return switchTo(snap, opts);
 }
 
-/** 删除账号快照 */
+/** Delete account snapshot */
 function remove(id) {
   let removed = 0;
   for (const f of [metaPath(id), snapPath(id)]) {
@@ -122,9 +122,9 @@ function remove(id) {
   return removed > 0;
 }
 
-/** 重命名账号（改 label/note） */
+/** Rename account (change label/note) */
 function rename(id, label, note) {
-  if (!fs.existsSync(metaPath(id))) throw new Error('找不到账号: ' + id);
+  if (!fs.existsSync(metaPath(id))) throw new Error('Account not found: ' + id);
   const meta = JSON.parse(fs.readFileSync(metaPath(id), 'utf8'));
   if (label) meta.label = label;
   if (note !== undefined) meta.note = note;
@@ -134,7 +134,7 @@ function rename(id, label, note) {
 
 function safeId(id) {
   const s = String(id || '').trim();
-  if (!/^[a-zA-Z0-9_-]{4,64}$/.test(s)) throw new Error('非法账号 id: ' + s);
+  if (!/^[a-zA-Z0-9_-]{4,64}$/.test(s)) throw new Error('Invalid account id: ' + s);
   return s;
 }
 
@@ -146,11 +146,11 @@ function atomicWriteJson(filePath, data, compact = false) {
 }
 
 function assertJsonText(text, name) {
-  if (typeof text !== 'string' || !text.trim()) throw new Error(name + ' 为空');
-  try { JSON.parse(text); } catch (e) { throw new Error(name + ' 不是有效 JSON: ' + e.message); }
+  if (typeof text !== 'string' || !text.trim()) throw new Error(name + ' is empty');
+  try { JSON.parse(text); } catch (e) { throw new Error(name + ' is not valid JSON: ' + e.message); }
 }
 
-/** 导出账号快照（默认全部账号） */
+/** Export account snapshots (all accounts by default) */
 function exportAccounts(ids) {
   ensureStore();
   const wanted = Array.isArray(ids) && ids.length ? new Set(ids.map(String)) : null;
@@ -173,12 +173,12 @@ function exportAccounts(ids) {
   };
 }
 
-/** 导入账号快照，默认跳过已存在账号 */
+/** Import account snapshots, skip existing accounts by default */
 function importAccounts(payload, opts = {}) {
   ensureStore();
   const overwrite = !!opts.overwrite;
-  if (!payload || typeof payload !== 'object') throw new Error('导入文件格式不正确');
-  if (!Array.isArray(payload.accounts)) throw new Error('导入文件缺少 accounts 数组');
+  if (!payload || typeof payload !== 'object') throw new Error('Import file format is invalid');
+  if (!Array.isArray(payload.accounts)) throw new Error('Import file is missing the accounts array');
 
   const imported = [];
   const skipped = [];
@@ -187,12 +187,12 @@ function importAccounts(payload, opts = {}) {
       const meta = item && item.meta;
       const snapshot = item && item.snapshot;
       const id = safeId(meta && meta.id);
-      if (!snapshot || typeof snapshot !== 'object') throw new Error('缺少 snapshot');
+      if (!snapshot || typeof snapshot !== 'object') throw new Error('Missing snapshot');
       assertJsonText(snapshot.credentials, 'credentials');
       assertJsonText(snapshot.config, 'config');
 
       if (!overwrite && (fs.existsSync(metaPath(id)) || fs.existsSync(snapPath(id)))) {
-        skipped.push({ id, label: meta.label, reason: '已存在' });
+        skipped.push({ id, label: meta.label, reason: 'Already exists' });
         continue;
       }
 
@@ -210,7 +210,7 @@ function importAccounts(payload, opts = {}) {
   return { imported, skipped, count: imported.length };
 }
 
-/** 当前登录态指纹（用于 status） */
+/** Current login state fingerprint (for status) */
 function current() {
   return extractFingerprint();
 }

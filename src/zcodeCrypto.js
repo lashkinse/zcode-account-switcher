@@ -1,15 +1,15 @@
 'use strict';
 /**
- * ZCode credentials enc:v1 加解密
+ * ZCode credentials enc:v1 encryption/decryption
  *
- * 逆向 ZCode app.asar 后确认：
- *   - 算法：aes-256-gcm
- *   - 格式：enc:v1:<nonce_base64url>.<authTag_base64url>.<cipherText_base64url>
- *   - key：sha256(secret)
- *   - secret：优先 process.env.ZCODE_CREDENTIAL_SECRET，否则
+ * Confirmed after reverse-engineering ZCode app.asar:
+ *   - Algorithm: aes-256-gcm
+ *   - Format: enc:v1:<nonce_base64url>.<authTag_base64url>.<cipherText_base64url>
+ *   - key: sha256(secret)
+ *   - secret: prioritizes process.env.ZCODE_CREDENTIAL_SECRET, otherwise
  *     `zcode-credential-fallback:${platform}:${homedir}:${username}`
  *
- * 这使工具能在当前 Windows 用户环境中读取/写入 credentials.json 的加密字段。
+ * This allows the tool to read/write encrypted fields of credentials.json in the current Windows user environment.
  */
 const crypto = require('crypto');
 const os = require('os');
@@ -46,7 +46,7 @@ function decrypt(value, secret = defaultCredentialSecret()) {
   if (!isEncrypted(value)) return value;
   const body = value.slice(PREFIX.length);
   const parts = body.split('.');
-  if (parts.length !== 3) throw new Error('enc:v1 格式不正确');
+  if (parts.length !== 3) throw new Error('Invalid enc:v1 format');
 
   const [noncePart, tagPart, cipherPart] = parts;
   const nonce = b64urlToBuffer(noncePart);

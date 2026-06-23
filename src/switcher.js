@@ -1,18 +1,18 @@
 'use strict';
 /**
- * 切换核心：进程检测 / 备份当前 / 替换登录态 / 回滚
+ * Core switching: process detection / backup current / replace login state / rollback
  *
- * 安全策略：
- *   1. 切换前必须关闭 ZCode（运行中改 credentials.json/config.json 不可靠，且客户端会回写）
- *   2. 替换前先把当前两份文件备份到 .last（用于一键回滚）
- *   3. 原子写：先写 .tmp 再 rename，避免半写状态损坏登录态
+ * Safety strategy:
+ *   1. Must close ZCode before switching (modifying credentials.json/config.json while running is unreliable, and the client will overwrite)
+ *   2. Before replacing, back up the current two files to .last (for one-click rollback)
+ *   3. Atomic write: write to .tmp first then rename, to avoid corrupted login state from partial writes
  */
 const fs = require('fs');
 const path = require('path');
 const { exec, execSync } = require('child_process');
 const { CREDENTIALS_FILE, CONFIG_FILE, findZCodeExe } = require('./paths');
 
-// .last 备份目录（打包后需写到可读写的用户目录）
+// .last backup directory (needs to be written to a readable/writable user directory after packaging)
 function resolveBackupDir() {
   if (process.env.ZCAS_DATA_DIR) {
     return path.join(process.env.ZCAS_DATA_DIR, '.last');
@@ -30,7 +30,7 @@ const BACKUP_DIR = resolveBackupDir();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * 检测 ZCode 是否在运行
+ * Check if ZCode is running
  */
 function isZCodeRunning() {
   try {
@@ -45,14 +45,14 @@ function isZCodeRunning() {
 }
 
 /**
- * 关闭 ZCode（所有进程）。等待最多 waitMs。
+ * Close ZCode (all processes). Wait up to waitMs.
  */
 async function killZCode({ waitMs = 8000 } = {}) {
   if (!isZCodeRunning()) return true;
   try {
     execSync('taskkill /F /IM ZCode.exe', { encoding: 'utf8', windowsHide: true, stdio: 'ignore' });
   } catch (_) {
-    // 即使 taskkill 失败也继续等
+    // Continue waiting even if taskkill fails
   }
   const deadline = Date.now() + waitMs;
   while (Date.now() < deadline) {
@@ -63,29 +63,61 @@ async function killZCode({ waitMs = 8000 } = {}) {
 }
 
 /**
- * 启动 ZCode
+ * Launch ZCode
  */
 function launchZCode() {
   const exe = findZCodeExe();
-  if (!exe) throw new Error('找不到 ZCode.exe，请确认安装路径（paths.js 里 ZCODE_INSTALL_DIR）');
-  // detached + 独立 stdio，避免阻塞本工具退出
+  if (!exe) throw new Error('ZCode.exe not found. Check the install path in paths.js (ZCODE_INSTALL_DIR)');
+  // detached + independent stdio, to avoid blocking this tool's exit
   try {
     exec(`"${exe}"`, { windowsHide: false, detached: true, stdio: 'ignore' }).unref();
     return true;
   } catch (e) {
-    throw new Error('启动 ZCode 失败: ' + e.message);
+    throw new Error('Failed to launch ZCode: ' + e.message);
   }
 }
 
-/** 读取一份登录态（两个文件内容） */
+/**
+ * Sanitize config.json: disable providers that ZCode marked as not entitled.
+ * ZCode sets enabled=true but systemDisabledReason="coding_plan_not_entitled"
+ * during capture. After startup ZCode disables them. We replicate that
+ * cleanup so saved snapshots don't contain stale enabled providers.
+ */
+function sanitizeConfig(configStr) {
+  try {
+    const cfg = JSON.parse(configStr);
+    const providers = cfg && cfg.provider;
+    if (!providers || typeof providers !== 'object') return configStr;
+
+    let changed = false;
+    for (const [pid, pdata] of Object.entries(providers)) {
+      if (pdata && pdata.enabled && pdata.systemDisabledReason) {
+        const reason = pdata.systemDisabledReason;
+        if (reason.includes('not_entitled') || reason.includes('inactive')) {
+          pdata.enabled = false;
+          // Replace JWT apiKey with empty string for not-entitled providers
+          if (pdata.options && pdata.options.apiKey && pdata.options.apiKey.startsWith('eyJ')) {
+            pdata.options.apiKey = '';
+          }
+          changed = true;
+        }
+      }
+    }
+    return changed ? JSON.stringify(cfg) : configStr;
+  } catch (_) {
+    return configStr;
+  }
+}
+
+/** Read a login state (content of two files) */
 function readSnapshot() {
   return {
     credentials: fs.readFileSync(CREDENTIALS_FILE, 'utf8'),
-    config: fs.readFileSync(CONFIG_FILE, 'utf8'),
+    config: sanitizeConfig(fs.readFileSync(CONFIG_FILE, 'utf8')),
   };
 }
 
-/** 原子写入一份登录态：先 .tmp 再 rename */
+/** Atomically write a login state: write to .tmp first then rename */
 function writeSnapshot(snap) {
   atomicWrite(CREDENTIALS_FILE, snap.credentials);
   atomicWrite(CONFIG_FILE, snap.config);
@@ -94,76 +126,86 @@ function writeSnapshot(snap) {
 function atomicWrite(filePath, content) {
   const tmp = filePath + '.zcas.tmp';
   fs.writeFileSync(tmp, content, 'utf8');
-  // rename 原子（同盘）
+  // rename atomic (same disk)
   fs.renameSync(tmp, filePath);
 }
 
 /**
- * 切换到指定账号快照
+ * Switch to specified account snapshot
  * @param {{credentials:string, config:string}} target
  * @param {{restart?:boolean, force?:boolean}} opts
- *   - restart: 切换后自动重启 ZCode（默认 true）
- *   - force:   即使 ZCode 在运行也强制 kill（默认 true，否则切换不可靠）
+ *   - restart: automatically restart ZCode after switching (default true)
+ *   - force: force kill even if ZCode is running (default true, otherwise switching is unreliable)
  */
 async function switchTo(target, opts = {}) {
   const { restart = true, force = true } = opts;
 
   if (!target || !target.credentials || !target.config) {
-    throw new Error('目标账号快照不完整');
+    throw new Error('Target account snapshot is incomplete');
   }
 
   const running = isZCodeRunning();
   if (running && !force) {
-    throw new Error('ZCode 正在运行，请先关闭，或使用 --force 强制切换');
+    throw new Error('ZCode is running. Stop it first, or use --force');
   }
 
-  // 1. 关闭 ZCode
+  // 1. Close ZCode
   if (running) {
     const ok = await killZCode();
-    if (!ok) throw new Error('关闭 ZCode 超时，已取消切换（避免登录态损坏）');
+    if (!ok) throw new Error('Shutdown timed out. Switch cancelled to prevent login state corruption');
   }
 
-  // 2. 备份当前登录态到 .last（用于回滚）
+  // 2. Back up current login state to .last (for rollback)
   try {
     if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
     fs.writeFileSync(path.join(BACKUP_DIR, 'credentials.json'), fs.readFileSync(CREDENTIALS_FILE, 'utf8'), 'utf8');
     fs.writeFileSync(path.join(BACKUP_DIR, 'config.json'), fs.readFileSync(CONFIG_FILE, 'utf8'), 'utf8');
   } catch (e) {
-    throw new Error('备份当前登录态失败: ' + e.message);
+    throw new Error('Failed to backup current login state: ' + e.message);
   }
 
-  // 3. 原子替换
+  // 3. Atomic replacement (sanitize config to remove stale not-entitled providers)
   try {
+    target = { ...target, config: sanitizeConfig(target.config) };
     writeSnapshot(target);
+    // Clear stale billing/quota caches so ZCode re-fetches from API with new account
+    try {
+      const cacheDir = require('./paths').ZCODE_V2_DIR;
+      const caches = ['coding-plan-cache.json', 'bots-model-cache.v2.json'];
+      for (const f of caches) {
+        const p = path.join(cacheDir, f);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+    } catch (_) {}
   } catch (e) {
-    // 替换失败：尝试用刚备份的 .last 恢复
+    // Replacement failed: attempt to restore from the just-backed-up .last
     try { restoreLast(); } catch (_) {}
-    throw new Error('写入登录态失败，已自动回滚: ' + e.message);
+    throw new Error('Failed to write login state; rolled back automatically: ' + e.message);
   }
 
-  // 4. 重启
+  // 4. Restart
   let launched = false;
   if (restart) {
     try { launchZCode(); launched = true; } catch (e) {
-      console.warn('⚠ 启动 ZCode 失败（登录态已切换）: ' + e.message);
+      console.warn('⚠ Failed to launch ZCode (login state already switched): ' + e.message);
     }
   }
 
   return { restarted: launched, wasRunning: running };
 }
 
-/** 回滚到 .last（切换前的登录态） */
+/** Rollback to .last (login state before switching) */
 async function rollback(opts = {}) {
   const { restart = true, force = true } = opts;
   if (!fs.existsSync(path.join(BACKUP_DIR, 'credentials.json'))) {
-    throw new Error('没有可回滚的备份（.last 不存在）');
+    throw new Error('No backup available for rollback (.last not found)');
   }
   if (isZCodeRunning() && !force) {
-    throw new Error('ZCode 正在运行，请先关闭，或使用 --force');
+    throw new Error('ZCode is running. Stop it first, or use --force');
   }
   if (isZCodeRunning()) {
     const ok = await killZCode();
-    if (!ok) throw new Error('关闭 ZCode 超时');
+    if (!ok) throw new Error('ZCode shutdown timed out');
   }
   restoreLast();
   let launched = false;
@@ -178,7 +220,7 @@ function restoreLast() {
   atomicWrite(CONFIG_FILE, g);
 }
 
-/** 是否存在可回滚的 .last 备份 */
+/** Check if a rollbackable .last backup exists */
 function hasLastBackup() {
   return fs.existsSync(path.join(BACKUP_DIR, 'credentials.json')) &&
          fs.existsSync(path.join(BACKUP_DIR, 'config.json'));

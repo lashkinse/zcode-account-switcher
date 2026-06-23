@@ -1,14 +1,14 @@
 'use strict';
 /**
- * 账号指纹提取
+ * Account fingerprint extraction
  *
- * 思路：
- *   - config.json 里「启用中的 provider」apiKey 是明文 JWT（base64），
- *     payload 含 user_id —— 这是最稳定的账号唯一标识。
- *   - credentials.json 里的 user_info/access_token 是 enc:v1 加密，
- *     已确认可用 ZCode 的机器绑定密钥解密，用于显示邮箱/头像/用户名。
+ * Strategy:
+ *   - The apiKey of "enabled providers" in config.json is plaintext JWT (base64),
+ *     payload contains user_id — this is the most stable unique account identifier.
+ *   - user_info/access_token in credentials.json are enc:v1 encrypted,
+ *     confirmed decryptable using ZCode's machine-bound key, used to display email/avatar/username.
  *
- * 指纹结构：
+ * Fingerprint structure:
  *   { userId, shortId, provider, label, email, name, avatar, capturedAt }
  */
 const fs = require('fs');
@@ -16,7 +16,7 @@ const { CREDENTIALS_FILE, CONFIG_FILE } = require('./paths');
 const { decrypt, decryptJson, isEncrypted } = require('./zcodeCrypto');
 
 /**
- * 解析 JWT payload（不验签，仅读 payload）
+ * Parse JWT payload (no signature verification, read payload only)
  * @param {string} jwt
  * @returns {object|null}
  */
@@ -28,7 +28,7 @@ function decodeJwt(jwt) {
     let p = parts[1];
     // base64url -> base64
     p = p.replace(/-/g, '+').replace(/_/g, '/');
-    // 补齐 padding
+    // Pad with =
     while (p.length % 4) p += '=';
     const json = Buffer.from(p, 'base64').toString('utf8');
     return JSON.parse(json);
@@ -70,25 +70,25 @@ function readCredentialProfile() {
 }
 
 /**
- * 从当前 config.json + credentials.json 提取账号指纹
+ * Extract account fingerprint from current config.json + credentials.json
  * @returns {{userId:string, shortId:string, provider:string, label:string} | null}
  */
 function extractFingerprint() {
   const profile = readCredentialProfile();
 
-  // 1. 从 config.json 找启用中且带 apiKey 的 provider
+  // 1. Find enabled providers with apiKey from config.json
   try {
     const rawCfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
     const providers = rawCfg.provider || {};
-    // 优先 enabled=true 的；其次任意带 apiKey 的
+    // Prioritize enabled=true; then any with apiKey
     const candidates = [];
     for (const [id, p] of Object.entries(providers)) {
       const apiKey = p && p.options && p.options.apiKey;
       if (!apiKey || typeof apiKey !== 'string') continue;
-      if (apiKey.startsWith('enc:') || apiKey.length < 30) continue; // 加密的或不像 JWT 跳过
+      if (apiKey.startsWith('enc:') || apiKey.length < 30) continue; // encrypted or not like JWT, skip
       candidates.push({ id, provider: p, apiKey });
     }
-    // enabled 优先
+    // enabled takes priority
     candidates.sort((a, b) => (b.provider.enabled ? 1 : 0) - (a.provider.enabled ? 1 : 0));
 
     for (const c of candidates) {
@@ -97,14 +97,14 @@ function extractFingerprint() {
         const uid = payload.user_id || payload.sub;
         const shortId = String(uid).slice(0, 8);
         const email = profile && profile.email;
-        // 邮箱去重 key：有邮箱用邮箱 hash，无邮箱回退 user_id shortId
+        // Email dedup key: use email hash if email available, fall back to user_id shortId
         const emailShortId = email ? ('em-' + simpleHash(email.toLowerCase()).slice(0, 10)) : shortId;
         return {
           userId: uid,
           shortId,
           emailShortId,
           provider: c.id,
-          label: (profile && (profile.email || profile.name)) || '账号-' + shortId,
+          label: (profile && (profile.email || profile.name)) || 'account-' + shortId,
           email: email,
           name: profile && profile.name,
           avatar: profile && profile.avatar,
@@ -116,8 +116,8 @@ function extractFingerprint() {
     }
   } catch (_) {}
 
-  // 2. 兜底：从 credentials.json 的 enc:v1 字段取不到内容，
-  //    用「未激活 provider 数 + active_provider 加密串前缀」生成弱指纹（仅去重用）
+  // 2. Fallback: when enc:v1 fields in credentials.json cannot be read,
+  //    generate weak fingerprint using 'inactive provider count + active_provider encrypted string prefix' (for deduplication only)
   try {
     const rawCred = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf8'));
     const ap = rawCred['oauth:active_provider'] || '';
@@ -130,7 +130,7 @@ function extractFingerprint() {
       shortId,
       emailShortId,
       provider: (profile && profile.activeProvider) || '(encrypted)',
-      label: (profile && (profile.email || profile.name)) || '账号-' + shortId,
+      label: (profile && (profile.email || profile.name)) || 'account-' + shortId,
       email: profile && profile.email,
       name: profile && profile.name,
       avatar: profile && profile.avatar,

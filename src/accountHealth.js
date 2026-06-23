@@ -1,9 +1,9 @@
 'use strict';
 /**
- * 账号快照健康检查
+ * Account snapshot health check
  *
- * 目标：在真正切换前，尽量用轻量级静态检查判断一份账号快照是否“完整 / 可读 / 大概率可用”。
- * 这里只做本地结构与字段检查，不主动访问网络。
+ * Goal: before actual switching, use lightweight static checks to determine if an account snapshot is "complete / readable / likely usable".
+ * Only local structure and field checks here, no active network access.
  */
 const { decodeJwt } = require('./fingerprint');
 const { decrypt, decryptJson, isEncrypted } = require('./zcodeCrypto');
@@ -25,14 +25,14 @@ function validateSnapshot(snapshot, meta = {}) {
   const errors = [];
 
   if (!snapshot || typeof snapshot !== 'object') {
-    return finalize(details, warnings, ['账号快照不存在或格式不正确']);
+    return finalize(details, warnings, ['Account snapshot is missing or has invalid format']);
   }
 
   details.hasCredentials = typeof snapshot.credentials === 'string' && snapshot.credentials.trim() !== '';
   details.hasConfig = typeof snapshot.config === 'string' && snapshot.config.trim() !== '';
 
-  if (!details.hasCredentials) errors.push('缺少 credentials 登录态');
-  if (!details.hasConfig) errors.push('缺少 config 登录态');
+  if (!details.hasCredentials) errors.push('Missing credentials login state');
+  if (!details.hasConfig) errors.push('Missing config login state');
   if (!details.hasCredentials || !details.hasConfig) return finalize(details, warnings, errors);
 
   let credentials = null;
@@ -42,14 +42,14 @@ function validateSnapshot(snapshot, meta = {}) {
     credentials = JSON.parse(snapshot.credentials);
     details.canParseCredentials = true;
   } catch (_) {
-    errors.push('credentials.json 不是有效 JSON');
+    errors.push('credentials.json is not valid JSON');
   }
 
   try {
     config = JSON.parse(snapshot.config);
     details.canParseConfig = true;
   } catch (_) {
-    errors.push('config.json 不是有效 JSON');
+    errors.push('config.json is not valid JSON');
   }
 
   if (!details.canParseCredentials || !details.canParseConfig) return finalize(details, warnings, errors);
@@ -57,7 +57,7 @@ function validateSnapshot(snapshot, meta = {}) {
   const tokens = quota.readCandidateTokensFromSnapshot(snapshot);
   details.hasTokens = tokens.length > 0;
   if (!details.hasTokens) {
-    errors.push('未找到可用于登录/查询的 token');
+    errors.push('No token found for login/query');
   }
 
   const providerInfo = extractProviderInfo(credentials, config);
@@ -66,10 +66,10 @@ function validateSnapshot(snapshot, meta = {}) {
   details.userId = details.userId || providerInfo.userId || null;
 
   if (!details.hasProviderApiKey) {
-    warnings.push('未找到启用中的 provider apiKey');
+    warnings.push('No enabled provider apiKey found');
   }
   if (!details.userId) {
-    warnings.push('无法从快照解析出稳定 user_id');
+    warnings.push('Unable to extract stable user_id from snapshot');
   }
 
   const userInfoState = checkUserInfo(credentials, providerInfo.provider);
@@ -121,7 +121,7 @@ function readActiveProvider(credentials) {
 
 function checkUserInfo(credentials, provider) {
   if (!credentials || typeof credentials !== 'object') {
-    return { canDecryptUserInfo: false, warning: 'credentials 结构异常，无法检查 user_info' };
+    return { canDecryptUserInfo: false, warning: 'credentials structure is abnormal; cannot check user_info' };
   }
 
   const keys = [];
@@ -135,20 +135,20 @@ function checkUserInfo(credentials, provider) {
     try {
       const data = decryptJson(value);
       if (data && typeof data === 'object') return { canDecryptUserInfo: true };
-      return { canDecryptUserInfo: false, warning: 'user_info 存在，但解密后不是有效 JSON' };
+      return { canDecryptUserInfo: false, warning: 'user_info exists but decrypted content is not valid JSON' };
     } catch (_) {
-      return { canDecryptUserInfo: false, warning: 'user_info 无法在当前机器环境解密' };
+      return { canDecryptUserInfo: false, warning: 'user_info cannot be decrypted on this machine' };
     }
   }
 
-  return { canDecryptUserInfo: false, warning: '未找到 user_info，界面信息可能不完整' };
+  return { canDecryptUserInfo: false, warning: 'user_info not found; UI info may be incomplete' };
 }
 
 function finalize(details, warnings, errors) {
   const status = errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'healthy';
   const summary =
     status === 'healthy'
-      ? '快照完整，可正常使用'
+      ? 'Snapshot is complete and ready for normal use'
       : status === 'warning'
         ? warnings[0]
         : errors[0];

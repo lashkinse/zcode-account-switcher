@@ -42,7 +42,7 @@ export default function App() {
   const [filters, setFilters] = useState({ health: 'all', quota: 'all' });
   const [selectedAccountIds, setSelectedAccountIds] = useState({});
 
-  const nextLocale = locale === 'zh-CN' ? 'en' : locale === 'en' ? 'ru' : 'zh-CN';
+  const nextLocale = locale === 'en' ? 'zh-CN' : 'en';
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -190,13 +190,13 @@ export default function App() {
       const ids = imported.map((x) => x.id).filter(Boolean);
       const fileErrors = (r.data?.files || []).filter((x) => x.error).length;
       const fileText = r.data?.fileCount > 1
-        ? (locale === 'zh-CN' ? `，共 ${r.data.fileCount} 个文件` : locale === 'ru' ? `, ${r.data.fileCount} файлов` : `, ${r.data.fileCount} files`)
+        ? (locale === 'zh-CN' ? `，共 ${r.data.fileCount} 个文件` : `, ${r.data.fileCount} files`)
         : '';
       const skippedText = skipped.length
-        ? (locale === 'zh-CN' ? `，跳过 ${skipped.length} 项` : locale === 'ru' ? `, пропущено ${skipped.length}` : `, skipped ${skipped.length}`)
+        ? (locale === 'zh-CN' ? `，跳过 ${skipped.length} 项` : `, skipped ${skipped.length}`)
         : '';
       const errorText = fileErrors
-        ? (locale === 'zh-CN' ? `，${fileErrors} 个文件失败` : locale === 'ru' ? `, ${fileErrors} файлов с ошибкой` : `, ${fileErrors} files failed`)
+        ? (locale === 'zh-CN' ? `，${fileErrors} 个文件失败` : `, ${fileErrors} files failed`)
         : '';
 
       if (ids.length) {
@@ -273,7 +273,7 @@ export default function App() {
       items,
       refreshedAt: latestRefresh || null,
       display: {
-        remaining: new Intl.NumberFormat(locale === 'zh-CN' ? 'zh-CN' : locale === 'ru' ? 'ru' : 'en', { maximumFractionDigits: 0 }).format(totalRemaining),
+        remaining: new Intl.NumberFormat(locale === 'zh-CN' ? 'zh-CN' : 'en', { maximumFractionDigits: 0 }).format(totalRemaining),
       },
     };
   }, [accountQuotas, locale, t]);
@@ -436,9 +436,7 @@ export default function App() {
             <div>
               {locale === 'zh-CN'
                 ? `另外还有 ${selectedAccounts.length - 8} 个账号…`
-                : locale === 'ru'
-                  ? `Ещё ${selectedAccounts.length - 8} аккаунтов…`
-                  : `${selectedAccounts.length - 8} more accounts…`}
+                : `${selectedAccounts.length - 8} more accounts…`}
             </div>
           )}
         </div>
@@ -512,8 +510,8 @@ export default function App() {
         <div className="topbar-actions">
           <button
             className="btn btn-ghost btn-icon"
-            title={nextLocale === 'en' ? 'Switch to English' : nextLocale === 'ru' ? 'Переключить на русский' : '切换到中文'}
-            aria-label={nextLocale === 'en' ? 'Switch to English' : nextLocale === 'ru' ? 'Переключить на русский' : '切换到中文'}
+            title={nextLocale === 'zh-CN' ? '切换到中文' : 'Switch to English'}
+            aria-label={nextLocale === 'zh-CN' ? '切换到中文' : 'Switch to English'}
             onClick={() => setLocale(nextLocale)}
             disabled={busy}
           >
